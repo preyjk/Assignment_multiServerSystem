@@ -37,5 +37,5 @@ plt.bar(bin_center,freq,width=bin_width)
 plt.plot(bin_center,y_expected,'r--',label = 'Expected',linewidth = 3)
 plt.legend()
 plt.title('Histogram of 10^4 exponentially distributed psuedo-random numbers')
-#plt.savefig('hist_expon.png')
+plt.savefig('hist_expon.png')
 

@@ -1,5 +1,6 @@
 import heapq
 from math import inf
+import random
 
 
 class Job:
@@ -8,6 +9,7 @@ class Job:
         self.service_time = service_time
         self.server_type = server_type
         self.finish_time = None
+        self.start_time = None
 
 
 class Server:
@@ -36,6 +38,66 @@ class Event:
         return self.event_time < other.event_time
 
 
+class GenerateVariable:
+    def __init__(self):
+        ## Simulation parameters
+        self.lamb = 3.1
+        self.a2l = 0.85
+        self.a2u = 1.21
+        # Service rate
+        self.p0 = 0.74
+        self.alpha0 = 0.5
+        self.beta0 = 5.7
+        self.eta0 = 1.9
+        self.alpha1 = 2.7
+        self.eta1 = 2.5
+        # Simulation time
+        self.time_end = 1000
+        self.arrival_times = []
+        self.service_times = []
+        ## Accounting parameters
+        # The cumulative response time
+        self.response_time_cumulative = 0
+        # Number of customers served at the end of the simulation
+        self.num_customers_served = 0
+
+    def generate_arrival_times(self):
+        current_time = 0
+        while current_time < self.time_end:
+            exp_time = random.expovariate(self.lamb)
+            uni_time = random.uniform(self.a2l, self.a2u)
+            inter_arrival_time = exp_time * uni_time
+            current_time += inter_arrival_time
+            if current_time < self.time_end:
+                self.arrival_times.append(current_time)
+        return self.arrival_times
+
+    def generate_service_time(self):
+        for _ in range(len(self.arrival_times)):
+            server_group = 0 if random.random() < self.p0 else 1
+            if server_group == 0:
+                service_time = self._generate_group0_service_time()
+            else:
+                service_time = self._generate_group1_service_time()
+            self.service_times.append((server_group, service_time))
+        return self.service_times
+
+    def _generate_group0_service_time(self):
+        while True:
+            t = random.uniform(self.alpha0, self.beta0)
+            probability_density = self.eta0 / ((self.alpha0 ** -self.eta0) - (self.beta0 ** -self.eta0)) * (
+                    t ** (self.eta0 + 1))
+            if random.random() < probability_density:
+                return t
+
+    def _generate_group1_service_time(self):
+        while True:
+            t = random.uniform(self.alpha1, 10)
+            probability_density = self.eta1 / (self.alpha1 ** -self.eta1) * (t ** (self.eta1 - 1))
+            if random.random() < probability_density / 10:
+                return t
+
+
 class SimulationManager:
     def __init__(self):
         self.current_time = 0
@@ -44,6 +106,11 @@ class SimulationManager:
         self.server_farms = []
         self.finished_jobs = []
         self.server_farm_queues = [[], []]
+        self.T0 = 0
+        self.T1 = 0
+        self.n0 = 0
+        self.n1 = 0
+        self.response_time_cumulative = 0
 
     def process_next_event(self):
         if not self.event_queue:
@@ -59,6 +126,7 @@ class SimulationManager:
 
     def handle_arrival(self, job):
         server_farm = self.server_farms[0] if job.server_type == 0 else self.server_farms[1]
+        job.start_time = self.current_time
         for server in server_farm:
             if not server.is_busy:
                 server.assign_job(job, self.current_time)
@@ -80,6 +148,12 @@ class SimulationManager:
                 t_limit = server.t_limit
                 break
         self.finished_jobs.append(job)
+        if job.server_type == 0:
+            self.T0 += job.finish_time - job.start_time
+            self.n0 += 1
+        elif job.server_type == 1:
+            self.T1 += job.finish_time - job.start_time
+            self.n1 += 1
         if job.server_type == 0 and self.server_farm_queues[0]:
             self.handle_arrival(self.server_farm_queues[0].pop(0))
         elif job.server_type == 1 and self.server_farm_queues[1]:
@@ -103,6 +177,28 @@ class SimulationManager:
                 pass
         elif input_mode == '2':
             print('---- run random mode ----')
+            generate_variable = GenerateVariable()
+            arrival_times = generate_variable.generate_arrival_times()
+            service_times = generate_variable.generate_service_time()
+            # print(len(generate_variable.arrival_times))
+            # print(len(generate_variable.service_times))
+            # print(generate_variable.arrival_times)
+            # print(generate_variable.service_times)
+            t_limit = 3.3
+            self.server_farms = [[Server(0, t_limit)], [Server(1, inf), Server(1, inf)]]
+            jobs = []
+            for index, arrival_time in enumerate(arrival_times):
+                job = Job(arrival_time, service_times[index][1], service_times[index][0])
+                jobs.append(job)
+            for job in jobs:
+                heapq.heappush(self.event_queue, Event(job.arrival_time, 'arrival', job))
+            while self.process_next_event():
+                self.print()
+                pass
+            w0 = 0.83
+            w1 = 0.059
+            self.response_time_cumulative = w0 * self.T0 / self.n0 + w1 * self.T1 / self.n1
+            print("response_time_cumulative T:", self.response_time_cumulative)
 
     def print(self):
         print()
@@ -127,5 +223,5 @@ class SimulationManager:
 
 
 if __name__ == "__main__":
-    simulationManager = SimulationManager()
-    simulationManager.run()
+    simulation_manager = SimulationManager()
+    simulation_manager.run()
